@@ -116,6 +116,52 @@ class KnowledgeBase(object):
             print("Invalid ask:", fact.statement)
             return []
 
+    def _retracthelper(self, fact_or_rule):
+        """Helper to retract fact or rule from KB
+    
+        Args:
+            fact_or_rule (Fact or Rule)
+
+        Returns:
+            None
+        """
+        if isinstance(fact_or_rule, Fact):
+            if fact_or_rule in self.facts:
+                fact = self._get_fact(fact_or_rule)
+                if fact.supported_by:
+                    fact.asserted = False #If asserted and supported, fact is no longer asserted
+                else: #If fact is not supported, go through the facts and rules it supports
+                    for i in fact.supports_facts:
+                        supportsfact = self._get_fact(i)
+                        for pair in supportsfact.supported_by:
+                            if pair[0] == fact:
+                                supportsfact.supported_by.remove(pair)
+                        self._retracthelper(supportsfact)
+                    for i in fact.supports_rules:
+                        supportsrule = self._get_rule(i)
+                        for pair in supportsrule.supported_by:
+                            if pair[0] == fact:
+                                supportsrule.supported_by.remove(pair)
+                        self._retracthelper(supportsrule)
+                    self.facts.remove(fact)
+        elif isinstance(fact_or_rule, Rule):
+            if fact_or_rule in self.rules:
+                rule = self._get_rule(fact_or_rule)
+                if (len(rule.supported_by) == 0) and (not rule.asserted): # Asserted rules should never be deleted, only those related to the retracted fact
+                    for i in rule.supports_facts:
+                        supportsfact = self._get_fact(i)
+                        for pair in supportsfact.supported_by:
+                            if pair[1] == rule:
+                                supportsfact.supported_by.remove(pair)
+                        self._retracthelper(supportsfact)
+                    for i in rule.supports_rules:
+                        supportsrule = self._get_rule(i)
+                        for pair in supportsrule.supported_by:
+                            if pair[1] == rule:
+                                supportsrule.supported_by.remove(pair)
+                        self._retracthelper(supportsrule)
+                    self.rules.remove(rule)
+
     def kb_retract(self, fact):
         """Retract a fact from the KB
 
@@ -128,6 +174,16 @@ class KnowledgeBase(object):
         printv("Retracting {!r}", 0, verbose, [fact])
         ####################################################
         # Student code goes here
+        if isinstance(fact, Fact):
+            self._retracthelper(fact)
+
+
+
+
+
+
+
+
         
 
 class InferenceEngine(object):
@@ -146,3 +202,21 @@ class InferenceEngine(object):
             [fact.statement, rule.lhs, rule.rhs])
         ####################################################
         # Student code goes here
+        if isinstance(fact,Fact):
+            if isinstance(rule,Rule):
+                binding = match(fact.statement, rule.lhs[0])
+                if binding:
+                    if len(rule.lhs)==1:
+                        inferred_fact = Fact(instantiate(rule.rhs, binding), [(fact,rule)])
+                        fact.supports_facts.append(inferred_fact)
+                        rule.supports_facts.append(inferred_fact)
+                        kb.kb_add(inferred_fact)
+                    else:
+                        inferred_lhs = []
+                        for ls in rule.lhs[1:]:
+                            inferred_lhs.append(instantiate(ls, binding))
+                        inferred_rhs = instantiate(rule.rhs, binding)
+                        inferred_rule = Rule([inferred_lhs, inferred_rhs], [(fact,rule)])
+                        fact.supports_rules.append(inferred_rule)
+                        rule.supports_rules.append(inferred_rule)
+                        kb.kb_add(inferred_rule)
